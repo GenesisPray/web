@@ -258,6 +258,81 @@ describe('RuleBuilder', () => {
         ])
       );
     });
+
+    it('rejects invalid admin function names and shows which were rejected', () => {
+      const handleChange = vi.fn();
+      render(
+        <RuleBuilder
+          rules={[]}
+          onChange={handleChange}
+        />
+      );
+
+      const typeSelect = screen.getByLabelText(/rule type/i);
+      fireEvent.change(typeSelect, { target: { value: 'AdminFunctionCalled' } });
+
+      const funcInput = screen.getByPlaceholderText(/e\.g\. set_admin/i);
+      fireEvent.change(funcInput, { target: { value: 'set-admin, 123bad, upgrade' } });
+
+      const addButton = screen.getByRole('button', { name: /add rule/i });
+      fireEvent.click(addButton);
+
+      expect(handleChange).not.toHaveBeenCalled();
+      expect(screen.getByText(/set-admin/i)).toBeInTheDocument();
+      expect(screen.getByText(/123bad/i)).toBeInTheDocument();
+    });
+
+    it('rejects admin function names longer than 32 characters', () => {
+      const handleChange = vi.fn();
+      render(
+        <RuleBuilder
+          rules={[]}
+          onChange={handleChange}
+        />
+      );
+
+      const typeSelect = screen.getByLabelText(/rule type/i);
+      fireEvent.change(typeSelect, { target: { value: 'AdminFunctionCalled' } });
+
+      const longName = 'a'.repeat(33);
+      const funcInput = screen.getByPlaceholderText(/e\.g\. set_admin/i);
+      fireEvent.change(funcInput, { target: { value: longName } });
+
+      const addButton = screen.getByRole('button', { name: /add rule/i });
+      fireEvent.click(addButton);
+
+      expect(handleChange).not.toHaveBeenCalled();
+      expect(screen.getByText(new RegExp(longName))).toBeInTheDocument();
+    });
+
+    it('accepts admin function names up to 32 characters', () => {
+      const handleChange = vi.fn();
+      render(
+        <RuleBuilder
+          rules={[]}
+          onChange={handleChange}
+        />
+      );
+
+      const typeSelect = screen.getByLabelText(/rule type/i);
+      fireEvent.change(typeSelect, { target: { value: 'AdminFunctionCalled' } });
+
+      const maxName = 'a'.repeat(32);
+      const funcInput = screen.getByPlaceholderText(/e\.g\. set_admin/i);
+      fireEvent.change(funcInput, { target: { value: maxName } });
+
+      const addButton = screen.getByRole('button', { name: /add rule/i });
+      fireEvent.click(addButton);
+
+      expect(handleChange).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          expect.objectContaining({
+            type: 'AdminFunctionCalled',
+            function_names: [maxName],
+          }),
+        ])
+      );
+    });
   });
 
   describe('duplicate detection', () => {
@@ -400,6 +475,49 @@ describe('RuleBuilder', () => {
 
       expect(screen.getByText(/these rules already exist/i)).toBeInTheDocument();
     });
+  });
+});
+
+describe('importSchema admin function names', () => {
+  it('rejects invalid admin function names', () => {
+    const result = importSchema.safeParse({
+      rules: [
+        { type: 'AdminFunctionCalled', function_names: ['set-admin'] },
+      ],
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects admin function names longer than 32 characters', () => {
+    const result = importSchema.safeParse({
+      rules: [
+        { type: 'AdminFunctionCalled', function_names: ['a'.repeat(33)] },
+      ],
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts and de-duplicates valid admin function names', () => {
+    const result = importSchema.safeParse({
+      rules: [
+        {
+          type: 'AdminFunctionCalled',
+          function_names: ['set_admin', 'upgrade', 'set_admin'],
+        },
+      ],
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.rules[0]).toEqual(
+        expect.objectContaining({
+          type: 'AdminFunctionCalled',
+          function_names: ['set_admin', 'upgrade'],
+        })
+      );
+    }
   });
 });
 

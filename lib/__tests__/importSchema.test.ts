@@ -41,20 +41,25 @@ describe('parseImport', () => {
     expect(validateContractEntry({ ...good, webhook_url: 'nope' })).toMatch(/webhook_url/)
   })
 
-  it('rejects invalid admin function names', () => {
+  it('rejects invalid admin function names and names the offender', () => {
     const r = validateContractEntry({
       ...good,
-      rules: [{ type: 'AdminFunctionCalled', functions: ['set-admin'] }],
+      rules: [{ type: 'AdminFunctionCalled', functions: ['upgrade', 'set-admin'] }],
     })
+    expect(typeof r).toBe('string')
     expect(r).toMatch(/set-admin/)
+    expect(r).not.toMatch(/upgrade/)
   })
 
   it('rejects admin function names over the 32-char symbol limit', () => {
+    const long = 'a'.repeat(33)
     const r = validateContractEntry({
       ...good,
-      rules: [{ type: 'AdminFunctionCalled', functions: ['a'.repeat(33)] }],
+      rules: [{ type: 'AdminFunctionCalled', functions: [long] }],
     })
+    expect(typeof r).toBe('string')
     expect(r).toMatch(/32/)
+    expect(r).toContain(long)
   })
 
   it('de-duplicates admin function names before saving', () => {

@@ -1,5 +1,9 @@
 import { vi } from 'vitest'
-import { syncSaveContract, syncDeleteContract, refreshContracts, getSyncStatuses } from '../contractSync'
+import {
+  syncSaveContract, syncDeleteContract, refreshContracts, getSyncStatuses,
+  onContractsChange,
+} from '../contractSync'
+import * as storage from '../storage'
 import { getContracts } from '../storage'
 import type { WatchedContract } from '@/types'
 
@@ -38,12 +42,38 @@ describe('contractSync', () => {
     expect(getSyncStatuses().a).toMatchObject({ state: 'error', error: 'boom' })
   })
 
+  it('re-exports the storage-layer onContractsChange', () => {
+    expect(onContractsChange).toBe(storage.onContractsChange)
+  })
+
   it('refresh replaces the cache with the API list', async () => {
     vi.stubEnv('NEXT_PUBLIC_API_URL', 'http://api')
     await syncSaveContract(c('old'), true).catch(() => {})
     ;(fetch as any).mockResolvedValue({ ok: true, json: async () => [c('new')] })
     const r = await refreshContracts()
     expect(r.contracts.map((x) => x.id)).toEqual(['new'])
+  })
+
+  it('refresh preserves remote updated_at values', async () => {
+    vi.stubEnv('NEXT_PUBLIC_API_URL', 'http://api')
+    const remote = { ...c('new'), updated_at: 12345 }
+    ;(fetch as any).mockResolvedValue({ ok: true, json: async () => [remote] })
+    const r = await refreshContracts()
+    expect(r.contracts[0].updated_at).toBe(12345)
+    expect(getContracts()[0].updated_at).toBe(12345)
+  })
+
+  it('refresh keeps local-only contracts as pending upload instead of deleting them', async () => {
+    vi.stubEnv('NEXT_PUBLIC_API_URL', 'http://api')
+    ;(fetch as any).mockResolvedValue({ ok: true, json: async () => ({}) })
+    await syncSaveContract(c('local'), true)
+    ;(fetch as any).mockResolvedValue({ ok: true, json: async () => [c('remote')] })
+    const r = await refreshContracts()
+    const ids = r.contracts.map((x) => x.id)
+    expect(ids).toContain('local')
+    expect(ids).toContain('remote')
+    expect(getContracts().map((x) => x.id)).toContain('local')
+    expect(r.pendingUpload?.map((x) => x.id)).toContain('local')
   })
 
   it('refresh keeps the cache on failure', async () => {

@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { AlertRule, AlertRuleType, isRuleEnabled } from '@/types'
 import { formatRuleSummary } from '@/lib/format'
 import { getRuleMeta } from '@/lib/ruleMeta'
+import { isValidFunctionName, sanitizeAdminFunctionNames } from '@/lib/soroban'
 import AlertRuleBadge from './AlertRuleBadge'
 
 const RULE_TYPES: AlertRuleType[] = [
@@ -59,10 +60,6 @@ function parseFunctionNames(raw: string): string[] {
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean)
-}
-
-function isValidFunctionName(name: string): boolean {
-  return /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name)
 }
 
 /** Key identifying a rule's configuration, ignoring the enabled flag. */
@@ -155,7 +152,7 @@ export default function RuleBuilder({ rules, onChange, onRulesChanged }: RuleBui
           return null
         }
         if (!isValidFunctionName(name)) {
-          setError('Function name must start with a letter or underscore, contain only alphanumeric characters and underscores')
+          setError('Function name must start with a letter or underscore, contain only alphanumeric characters and underscores, and be at most 32 characters')
           return null
         }
         return { type: 'FunctionCalled', function_name: name }
@@ -166,7 +163,12 @@ export default function RuleBuilder({ rules, onChange, onRulesChanged }: RuleBui
           setError('Enter at least one function name')
           return null
         }
-        return { type: 'AdminFunctionCalled', function_names: [...names].sort() }
+        const { valid, invalid } = sanitizeAdminFunctionNames(names)
+        if (invalid.length) {
+          setError(`Invalid function names: ${invalid.join(', ')}`)
+          return null
+        }
+        return { type: 'AdminFunctionCalled', function_names: [...valid].sort() }
       }
       case 'AnyTransaction':
       case 'TransactionFailed':

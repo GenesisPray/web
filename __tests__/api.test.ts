@@ -4,6 +4,7 @@ import {
   buildTestWebhookPayload,
   describeRule,
   joinUrl,
+  removeContract,
   sendTestWebhook,
   TEST_TX_HASH,
 } from '@/lib/api'
@@ -317,5 +318,30 @@ describe('joinUrl', () => {
     expect(joinUrl('http://a/', '/b')).toBe('http://a/b')
     expect(joinUrl('http://a', 'b')).toBe('http://a/b')
     expect(joinUrl('', '/b')).toBe('/b')
+  })
+})
+
+describe('removeContract', () => {
+  const f = () => global.fetch as unknown as ReturnType<typeof vi.fn>
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.stubEnv('NEXT_PUBLIC_API_URL', 'http://api/')
+  })
+
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+
+  it('sends a DELETE through apiFetch with a single-slash URL (#252)', async () => {
+    f().mockResolvedValue({ ok: true, status: 204, text: () => Promise.resolve('') })
+
+    await expect(removeContract('abc123')).resolves.toBeUndefined()
+
+    expect(f()).toHaveBeenCalledTimes(1)
+    const [url, init] = f().mock.calls[0]
+    expect(url).toBe('http://api/contracts/abc123')
+    expect(url).not.toContain('//contracts')
+    expect((init as RequestInit).method).toBe('DELETE')
   })
 })

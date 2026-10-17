@@ -1,5 +1,11 @@
 import type { WatchedContract } from '@/types'
-import { getContracts, saveContract, deleteContract } from '@/lib/storage'
+import {
+  getContracts,
+  saveContract,
+  deleteContract,
+  replaceContracts,
+  onContractsChange,
+} from '@/lib/storage'
 import {
   isApiConfigured,
   listContracts,
@@ -21,18 +27,10 @@ const STATUS_KEY = 'txwatch_sync_status'
 export const CONTRACTS_STORAGE_KEY = 'txwatch_contracts'
 
 /**
- * Subscribe to cross-tab contract changes. The callback fires whenever another
- * tab writes to the contracts cache (add, delete, or refresh). Returns an
- * unsubscribe function.
+ * Re-exported from the storage layer so callers get a subscription that fires
+ * for both same-tab and cross-tab contract cache writes.
  */
-export function subscribeToContractChanges(onChange: () => void): () => void {
-  if (typeof window === 'undefined') return () => {}
-  const handler = (e: StorageEvent) => {
-    if (e.key === null || e.key === CONTRACTS_STORAGE_KEY) onChange()
-  }
-  window.addEventListener('storage', handler)
-  return () => window.removeEventListener('storage', handler)
-}
+export { onContractsChange }
 
 export function getSyncStatuses(): Record<string, SyncStatus> {
   try {
@@ -80,35 +78,26 @@ export async function syncDeleteContract(id: string): Promise<void> {
 
 /**
  * With an API configured, the API is the source of truth: replace the local
- * cache with its list. On failure the cache is kept and the error returned.
+ * cache with its list, preserving server timestamps. Contracts that exist only
+ * locally (e.g. created while offline) are kept and marked as pending upload
+ * rather than deleted, so their alert history is not lost. On failure the
+ * cache is kept and the error returned.
  */
 export async function refreshContracts(): Promise<{ contracts: WatchedContract[]; error?: string }> {
   if (!isApiConfigured()) return { contracts: getContracts() }
   try {
     const remote = await listContracts()
-    const ids = new Set(remote.map((c) => c.id))
-    getContracts().filter((c) => !ids.has(c.id)).forEach((c) => deleteContract(c.id))
+    const remoteIds = new Set(remote.map((c) => c.id))
+    const localOnly = getContracts().filter((c) => !remoteIds.has(c.id))
+    replaceContracts([...remote, ...localOnly])
     remote.forEach((c) => {
-      saveContract(c)
       setStatus(c.id, { state: 'synced', at: Date.now() })
+    })
+    localOnly.forEach((c) => {
+      setStatus(c.id, { state: 'error', error: 'Pending upload', at: Date.now() })
     })
     return { contracts: getContracts() }
   } catch (e) {
     return { contracts: getContracts(), error: errMsg(e) }
   }
-}
-
-/**
- * Subscribe to cross-tab contract changes. The callback fires whenever the
- * contracts cache is written from another tab (or window) via the `storage`
- * event, so detail pages can reload the contract or detect its deletion.
- * Returns an unsubscribe function.
- */
-export function onContractsChange(callback: () => void): () => void {
-  if (typeof window === 'undefined') return () => {}
-  const handler = (e: StorageEvent) => {
-    if (e.key === null || e.key === CONTRACTS_KEY) callback()
-  }
-  window.addEventListener('storage', handler)
-  return () => window.removeEventListener('storage', handler)
 }

@@ -42,10 +42,9 @@ This document maps key files and directories to their functional areas, helping 
 | `contractSort.ts` | Sorting utilities — sort contracts by various criteria |
 | `contractSync.ts` | Contract synchronization — sync contracts with backend |
 | `dashboard.ts` | Dashboard utilities — stats calculations, aggregations |
-| `exportStorage.ts` | Export functionality — export contracts and settings |
 | `formatAmount.ts` | Number formatting — format tokens, amounts, decimals |
 | `format.ts` | General formatting — dates, addresses, hashes |
-| `importSchema.ts` | Import functionality — schema validation for imports |
+| `importSchema.ts` | Import/export functionality — schema validation for imports and exports (v1 contracts-only and v2 full-backup formats) |
 | `notifications.ts` | Notification handling — toast messages, alerts |
 | `ruleMeta.ts` | Alert rule metadata — rule type definitions |
 | `storageLogger.ts` | Storage debugging — log storage operations |

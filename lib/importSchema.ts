@@ -10,6 +10,42 @@ export interface ContractsSnapshot {
   contracts: WatchedContract[]
 }
 
+/** Notification preference persisted in settings. */
+export type NotificationPreference = 'all' | 'alerts' | 'none'
+
+/** View preferences persisted in settings. */
+export interface ViewPreferences {
+  theme?: string
+  sortBy?: string
+  filterNetwork?: Network | 'all'
+  [key: string]: unknown
+}
+
+/** Settings persisted in localStorage and included in full backups. */
+export interface BackupSettings {
+  retentionDays: number
+  notificationPreference: NotificationPreference
+  viewPreferences: ViewPreferences
+}
+
+/** Full-backup file format including contracts, alert history and settings. */
+export interface BackupSnapshotV2 {
+  version: 2
+  exportedAt: string
+  contracts: WatchedContract[]
+  alerts: AlertHistoryEntry[]
+  settings: BackupSettings
+}
+
+/** Minimal alert-history entry shape used by backups. */
+export interface AlertHistoryEntry {
+  id?: string
+  contract_id: string
+  network?: Network
+  timestamp: number
+  [key: string]: unknown
+}
+
 export interface ImportEntryError {
   index: number
   message: string
@@ -18,6 +54,8 @@ export interface ImportEntryError {
 export interface ImportParseResult {
   contracts: WatchedContract[]
   errors: ImportEntryError[]
+  alerts?: AlertHistoryEntry[]
+  settings?: BackupSettings
 }
 
 const NETWORKS: Network[] = ['mainnet', 'testnet', 'futurenet']
@@ -53,6 +91,60 @@ export function buildSnapshot(contracts: WatchedContract[]): ContractsSnapshot {
     count: contracts.length,
     contracts,
   }
+}
+
+export const DEFAULT_BACKUP_SETTINGS: BackupSettings = {
+  retentionDays: 30,
+  notificationPreference: 'all',
+  viewPreferences: {},
+}
+
+const NOTIFICATION_PREFERENCES: NotificationPreference[] = ['all', 'alerts', 'none']
+
+/** Normalizes unknown settings input, falling back to defaults per field. */
+export function normalizeSettings(input: unknown): BackupSettings {
+  if (typeof input !== 'object' || input === null) return { ...DEFAULT_BACKUP_SETTINGS }
+  const s = input as Record<string, unknown>
+  const retentionDays =
+    typeof s.retentionDays === 'number' && Number.isFinite(s.retentionDays) && s.retentionDays >= 0
+      ? s.retentionDays
+      : DEFAULT_BACKUP_SETTINGS.retentionDays
+  const notificationPreference = NOTIFICATION_PREFERENCES.includes(
+    s.notificationPreference as NotificationPreference,
+  )
+    ? (s.notificationPreference as NotificationPreference)
+    : DEFAULT_BACKUP_SETTINGS.notificationPreference
+  const viewPreferences =
+    typeof s.viewPreferences === 'object' && s.viewPreferences !== null && !Array.isArray(s.viewPreferences)
+      ? (s.viewPreferences as ViewPreferences)
+      : { ...DEFAULT_BACKUP_SETTINGS.viewPreferences }
+  return { retentionDays, notificationPreference, viewPreferences }
+}
+
+export function buildBackup(
+  contracts: WatchedContract[],
+  alerts: AlertHistoryEntry[],
+  settings: BackupSettings,
+): BackupSnapshotV2 {
+  return {
+    version: 2,
+    exportedAt: new Date().toISOString(),
+    contracts,
+    alerts,
+    settings: normalizeSettings(settings),
+  }
+}
+
+/** Light shape check for alert-history entries; returns null when unusable. */
+export function validateAlertEntry(entry: unknown): AlertHistoryEntry | null {
+  if (typeof entry !== 'object' || entry === null) return null
+  const e = entry as Record<string, unknown>
+  if (typeof e.contract_id !== 'string' || !e.contract_id) return null
+  if (typeof e.timestamp !== 'number' || !Number.isFinite(e.timestamp)) return null
+  const result: AlertHistoryEntry = { ...e, contract_id: e.contract_id, timestamp: e.timestamp }
+  if (typeof e.id === 'string' && e.id) result.id = e.id
+  if (NETWORKS.includes(e.network as Network)) result.network = e.network as Network
+  return result
 }
 
 function validateRule(rule: unknown): AlertRule | string {
@@ -101,7 +193,8 @@ export function validateContractEntry(entry: unknown): WatchedContract | string 
 }
 
 /**
- * Parses an export file. Throws only when the file as a whole is unusable
+ * Parses an export file. Accepts the v1 contracts-only format and the v2
+ * full-backup format. Throws only when the file as a whole is unusable
  * (bad JSON / wrong envelope); per-entry problems are reported in `errors`.
  */
 export function parseImport(json: string): ImportParseResult {
@@ -111,14 +204,14 @@ export function parseImport(json: string): ImportParseResult {
   } catch {
     throw new Error('Invalid JSON: cannot parse contract snapshot')
   }
-  const list = Array.isArray(parsed)
-    ? parsed
-    : (parsed as { version?: unknown; contracts?: unknown } | null)?.contracts
-  if (
-    !Array.isArray(list) ||
-    (!Array.isArray(parsed) && (parsed as { version?: unknown }).version !== 1)
-  ) {
-    throw new Error('Invalid snapshot format: expected { version: 1, contracts: [...] }')
+  const isArray = Array.isArray(parsed)
+  const envelope = isArray ? null : (parsed as { version?: unknown; contracts?: unknown } | null)
+  const version = envelope?.version
+  const list = isArray ? parsed : envelope?.contracts
+  if (!Array.isArray(list) || (!isArray && version !== 1 && version !== 2)) {
+    throw new Error(
+      'Invalid snapshot format: expected { version: 1, contracts: [...] } or { version: 2, contracts, alerts, settings }',
+    )
   }
   const contracts: WatchedContract[] = []
   const errors: ImportEntryError[] = []
@@ -127,7 +220,18 @@ export function parseImport(json: string): ImportParseResult {
     if (typeof result === 'string') errors.push({ index, message: result })
     else contracts.push(result)
   })
-  return { contracts, errors }
+  if (version !== 2) return { contracts, errors }
+
+  const rawAlerts = (envelope as { alerts?: unknown }).alerts
+  const alerts: AlertHistoryEntry[] = []
+  if (Array.isArray(rawAlerts)) {
+    for (const entry of rawAlerts) {
+      const result = validateAlertEntry(entry)
+      if (result) alerts.push(result)
+    }
+  }
+  const settings = normalizeSettings((envelope as { settings?: unknown }).settings)
+  return { contracts, errors, alerts, settings }
 }
 
 export type ImportMode = 'merge' | 'replace'

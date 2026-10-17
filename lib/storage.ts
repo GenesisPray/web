@@ -309,6 +309,61 @@ export function deleteAlerts(contractId: string) {
   save(ALERTS_KEY, alerts.filter((a) => a.contract_id !== contractId))
 }
 
+// Persists a full alert list (used by the import flow to restore a backup).
+export function replaceAlerts(alerts: AlertPayload[]): boolean {
+  const valid = alerts.filter((a) => isValidAlert(a))
+  return save(ALERTS_KEY, valid)
+}
+
+// Rewrites `contract_id` on every alert matching `oldContractId` so alert history
+// survives when an imported contract is re-keyed under a new id.
+export function rekeyAlerts(oldContractId: string, newContractId: string): boolean {
+  if (oldContractId === newContractId) return true
+  const alerts = load<AlertPayload>(ALERTS_KEY)
+  let changed = false
+  const next = alerts.map((a) => {
+    if (a.contract_id !== oldContractId) return a
+    changed = true
+    return { ...a, contract_id: newContractId }
+  })
+  if (!changed) return true
+  return save(ALERTS_KEY, next)
+}
+
+const NOTIFICATION_PREF_KEY = 'txwatch_notification_preference'
+const VIEW_PREFERENCES_KEY = 'txwatch_view_preferences'
+
+export interface ViewPreferences {
+  [key: string]: unknown
+}
+
+export function getNotificationPreference(): string | null {
+  return getStorage()?.getItem(NOTIFICATION_PREF_KEY) ?? null
+}
+
+export function setNotificationPreference(preference: string | null) {
+  const storage = getStorage()
+  if (!storage) return
+  if (preference === null) {
+    storage.removeItem(NOTIFICATION_PREF_KEY)
+  } else {
+    storage.setItem(NOTIFICATION_PREF_KEY, preference)
+  }
+}
+
+export function getViewPreferences(): ViewPreferences {
+  const storage = getStorage()
+  if (!storage) return {}
+  const parsed = safeParseStorage<unknown>(VIEW_PREFERENCES_KEY, {})
+  return isRecord(parsed) ? (parsed as ViewPreferences) : {}
+}
+
+export function setViewPreferences(preferences: ViewPreferences) {
+  const storage = getStorage()
+  if (!storage) return
+  storage.setItem(VIEW_PREFERENCES_KEY, JSON.stringify(preferences))
+}
+
 export function deleteAlert(alertId: string) {
   const alerts = load<AlertPayload & { id?: string }>(ALERTS_KEY)
   save(ALERTS_KEY, alerts.filter((a) => a.id !== alertId))

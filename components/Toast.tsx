@@ -2,13 +2,18 @@
 
 import { useEffect, useRef, useState } from 'react'
 
-interface ToastProps {
-  message: string
-  type: 'success' | 'error'
+export type ToastType = 'success' | 'error'
+
+export interface ToastOptions {
   duration?: number
-  onClose?: () => void
   actionLabel?: string
   onAction?: () => void
+}
+
+interface ToastProps extends ToastOptions {
+  message: string
+  type: ToastType
+  onClose?: () => void
 }
 
 /**
@@ -30,23 +35,29 @@ export default function Toast({
   onAction,
 }: ToastProps) {
   const [isVisible, setIsVisible] = useState(true)
+  const [isPaused, setIsPaused] = useState(false)
+  const remainingTimeRef = useRef(duration)
+  const timerStartedAtRef = useRef(0)
 
-  // Store onClose in a ref so the timer effect does not re-run when a parent
-  // re-renders with a new inline arrow function reference.
   const onCloseRef = useRef(onClose)
   useEffect(() => {
     onCloseRef.current = onClose
-  })
+  }, [onClose])
 
   useEffect(() => {
+    remainingTimeRef.current = duration
+  }, [duration])
+
+  useEffect(() => {
+    if (isPaused || !isVisible) return
+
+    timerStartedAtRef.current = Date.now()
     const timer = setTimeout(() => {
       setIsVisible(false)
       onCloseRef.current?.()
-    }, duration)
+    }, remainingTimeRef.current)
     return () => clearTimeout(timer)
-    // Intentionally only depends on duration — onClose changes are captured via ref
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [duration])
+  }, [duration, isPaused, isVisible])
 
   if (!isVisible) return null
 
@@ -67,12 +78,23 @@ export default function Toast({
     dismiss()
   }
 
+  function pauseTimer() {
+    if (isPaused) return
+    remainingTimeRef.current = Math.max(
+      0,
+      remainingTimeRef.current - (Date.now() - timerStartedAtRef.current)
+    )
+    setIsPaused(true)
+  }
+
   return (
     <div
       role="status"
       aria-live="polite"
       aria-atomic="true"
-      className={`fixed bottom-4 right-4 max-w-sm px-4 py-3 rounded-lg border ${bgColor} ${textColor} text-sm flex items-center gap-2 animate-toast-in`}
+      onMouseEnter={pauseTimer}
+      onMouseLeave={() => setIsPaused(false)}
+      className={`w-full px-4 py-3 rounded-lg border ${bgColor} ${textColor} text-sm flex items-center gap-2 animate-toast-in`}
     >
       <span className="font-bold" aria-hidden="true">
         {icon}
@@ -96,8 +118,19 @@ export default function Toast({
         aria-label="Dismiss notification"
         className="ml-1 opacity-60 hover:opacity-100 transition-opacity"
       >
-        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+        <svg
+          className="w-3.5 h-3.5"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          aria-hidden="true"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M6 18L18 6M6 6l12 12"
+          />
         </svg>
       </button>
     </div>

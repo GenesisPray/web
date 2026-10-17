@@ -27,7 +27,7 @@ import { useFreighterConnection } from '@/lib/useFreighterConnection'
 import { useNetworkMismatchWarning } from '@/lib/useNetworkMismatchWarning'
 import RuleBuilder from '@/components/RuleBuilder'
 import FreighterConnect from '@/components/FreighterConnect'
-import Toast from '@/components/Toast'
+import { useToast } from '@/components/ToastProvider'
 
 interface FormErrors {
   label?: string
@@ -40,6 +40,7 @@ interface FormErrors {
 
 export default function NewContractPage() {
   const router = useRouter()
+  const { showToast } = useToast()
   const { isConnected } = useFreighterConnection()
   const [networkWarning, setNetworkWarning] = useState<string | null>(null)
   const [hasNetworkMismatch, setHasNetworkMismatch] = useState(false)
@@ -60,7 +61,6 @@ export default function NewContractPage() {
   const [isCheckingContract, setIsCheckingContract] = useState(false)
   const [contractNotFoundWarning, setContractNotFoundWarning] = useState<string | null>(null)
   const [overrideNotFound, setOverrideNotFound] = useState(false)
-  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
   const [showDiscardModal, setShowDiscardModal] = useState(false)
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
@@ -394,7 +394,7 @@ export default function NewContractPage() {
     addContract(contract)
     if (!saveContract(contract)) {
       setSaving(false)
-      setToast({ message: 'Could not save contract: browser storage is full or unavailable.', type: 'error' })
+      showToast('Could not save contract: browser storage is full or unavailable.', 'error')
       return
     }
     try {
@@ -402,7 +402,7 @@ export default function NewContractPage() {
     } catch {
       // ignore storage errors
     }
-    setToast({ message: `Contract "${contract.label}" saved successfully!`, type: 'success' })
+    showToast(`Contract "${contract.label}" saved successfully!`, 'success')
     saveTimeoutRef.current = setTimeout(() => {
       router.push(`/contracts/${contract.id}`)
     }, 1500)
@@ -477,7 +477,6 @@ export default function NewContractPage() {
 
   return (
     <>
-      {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
       {showDiscardModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
           <div className="w-full max-w-sm rounded-xl border border-zinc-800 bg-zinc-900 p-5 space-y-4">

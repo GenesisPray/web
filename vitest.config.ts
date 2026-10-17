@@ -13,7 +13,7 @@ export default defineConfig({
     // #122: Coverage configuration
     coverage: {
       provider: 'v8',
-      reporter: ['text', 'json', 'html', 'lcov'],
+      reporter: ['text', 'json', 'json-summary', 'html', 'lcov'],
       exclude: [
         'node_modules/',
         '.next/',
@@ -23,10 +23,12 @@ export default defineConfig({
         'vitest.setup.ts',
         '**/*.d.ts',
       ],
-      lines: 50,
-      functions: 50,
-      branches: 50,
-      statements: 50,
+      thresholds: {
+        lines: 50,
+        functions: 50,
+        branches: 50,
+        statements: 50,
+      },
     },
   },
   resolve: {

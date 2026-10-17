@@ -1,4 +1,4 @@
-import { CONTRACTS_KEY } from './storage';
+import { CONTRACTS_KEY } from './storageKeys';
 
 export interface ContractExportSnapshot {
   version: 1;
@@ -12,6 +12,8 @@ export interface StoredContractExport {
   address: string;
   label: string;
   network: string;
+  /** Paused state; absent = true (enabled). */
+  enabled?: boolean;
   [key: string]: unknown;
 }
 
@@ -109,12 +111,21 @@ export function exportContractsAsCsv(
   network = 'all',
 ): string {
   const { contracts } = buildContractSnapshot(storageKey);
-  const header = ['id', 'address', 'label', 'network', 'contractId', 'exportedAt'];
+  const header = [
+    'id',
+    'address',
+    'label',
+    'network',
+    'enabled',
+    'contractId',
+    'exportedAt',
+  ];
   const rows = contracts.map((contract) => [
     escapeCsvField(contract.id),
     escapeCsvField(contract.address),
     escapeCsvField(contract.label),
     escapeCsvField(contract.network),
+    escapeCsvField(contract.enabled !== false),
     escapeCsvField(contract.contractId ?? contract.id),
     escapeCsvField(toIsoUtc(contract.exportedAt ?? new Date())),
   ]);

@@ -9,6 +9,8 @@ export interface StorageErrorContext {
 
 const errorHandlers: StorageErrorHandler[] = [];
 
+let lastStorageError: StorageErrorContext | null = null;
+
 export function onStorageError(handler: StorageErrorHandler): void {
   errorHandlers.push(handler);
 }
@@ -17,7 +19,21 @@ export function clearStorageErrorHandlers(): void {
   errorHandlers.length = 0;
 }
 
+/**
+ * Return the most recent storage parse error, or `null` if none has been
+ * reported since the last `clearLastStorageError()` call.
+ */
+export function getLastStorageError(): StorageErrorContext | null {
+  return lastStorageError;
+}
+
+export function clearLastStorageError(): void {
+  lastStorageError = null;
+}
+
 function emitStorageError(ctx: StorageErrorContext): void {
+  lastStorageError = ctx;
+=======
   const isDev =
     typeof process !== 'undefined'
       ? process.env.NODE_ENV !== 'production'

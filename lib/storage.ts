@@ -1,12 +1,17 @@
 import { WatchedContract, AlertPayload, AlertRule, Network, parseAlertRule } from '@/types'
 import { HORIZON_URLS } from './stellar'
 import { safeParseStorage, storageLogger } from './storageLogger'
+import {
+  CONTRACTS_KEY,
+  ALERTS_KEY,
+  STORAGE_VERSION_KEY,
+  STORAGE_EVENT,
+  ALERT_RETENTION_DAYS_KEY as RETENTION_KEY,
+} from './storageKeys'
 
-export const CONTRACTS_KEY = 'txwatch_contracts'
-const ALERTS_KEY = 'txwatch_alerts'
-const STORAGE_VERSION_KEY = 'txwatch_storage_version'
+export { CONTRACTS_KEY }
+
 const CURRENT_STORAGE_VERSION = 2
-const STORAGE_EVENT = 'txwatch:storage'
 
 function getStorage(): Storage | undefined {
   if (typeof window !== 'undefined') return window.localStorage
@@ -62,7 +67,6 @@ function load<T>(key: string): T[] {
 const STORAGE_QUOTA_BYTES = 5 * 1024 * 1024 // 5MB typical limit
 const MAX_ALERTS_PER_CONTRACT = 500
 const DEFAULT_RETENTION_DAYS = 90
-const RETENTION_KEY = 'txwatch_alert_retention_days'
 
 export function getRetentionDays(): number {
   const raw = Number(getStorage()?.getItem(RETENTION_KEY))
@@ -106,13 +110,36 @@ export function pruneOldAlerts() {
   }
 }
 
-function trimAlertsToCutoff(cutoff: number) {
+// Trims alerts to the user's retention window and the per-contract cap,
+// dropping the oldest alerts first. Only ever touches the alerts key.
+function trimAlertsForQuota(): void {
   const storage = getStorage()
   if (!storage) return
   const alerts = load<AlertPayload>(ALERTS_KEY)
-  const trimmed = alerts.filter((a) => a.timestamp >= cutoff)
-  if (trimmed.length < alerts.length) {
-    storage.setItem(ALERTS_KEY, JSON.stringify(trimmed))
+  const cutoff = Date.now() - getRetentionDays() * 24 * 60 * 60 * 1000
+
+  const byContract = new Map<string, AlertPayload[]>()
+  for (const alert of alerts) {
+    const list = byContract.get(alert.contract_id) ?? []
+    list.push(alert)
+    byContract.set(alert.contract_id, list)
+  }
+
+  const kept: AlertPayload[] = []
+  for (const list of byContract.values()) {
+    list
+      .filter((a) => a.timestamp >= cutoff)
+      .sort((a, b) => b.timestamp - a.timestamp)
+      .slice(0, MAX_ALERTS_PER_CONTRACT)
+      .forEach((a) => kept.push(a))
+  }
+
+  if (kept.length < alerts.length) {
+    try {
+      storage.setItem(ALERTS_KEY, JSON.stringify(kept))
+    } catch {
+      // best effort
+    }
   }
 }
 
@@ -159,27 +186,16 @@ function saveInternal<T>(key: string, data: T[]): boolean {
   const storage = getStorage()
   if (!storage) return false
 
-  if (key !== ALERTS_KEY) {
-    pruneOldAlerts()
-  }
-
   if (key === ALERTS_KEY) {
     const size = getStorageSize()
     if (size > STORAGE_QUOTA_BYTES * 0.9) {
-      const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000
-      data = (data as AlertPayload[]).filter((a) => a.timestamp >= cutoff) as unknown as T[]
+      trimAlertsForQuota()
     }
     return writeItem(storage, key, JSON.stringify(data))
   }
 
-  const ok = writeItem(storage, key, JSON.stringify(data))
-
-  const size = getStorageSize()
-  if (size > STORAGE_QUOTA_BYTES * 0.9) {
-    const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000
-    trimAlertsToCutoff(cutoff)
-  }
-  return ok
+  // Non-alert writes never read or rewrite the alerts array.
+  return writeItem(storage, key, JSON.stringify(data))
 }
 
 function getStorageVersion(): number {
@@ -207,7 +223,7 @@ export function migrateStorage(migrations: Record<number, () => void>) {
 // Migration v2: add the `enabled` flag (default true) to every watched contract.
 export function migrateContractsToV2() {
   const contracts = getContracts()
-  const migrated = contracts.map((c) => ({
+  const migrated: WatchedContract[] = contracts.map((c) => ({
     ...c,
     enabled: c.enabled ?? true,
   }))
@@ -257,7 +273,11 @@ export function addContract(contract: WatchedContract) {
 
 export function saveContract(contract: WatchedContract): boolean {
   const contracts = getContracts()
-  const updated = { ...contract, enabled: contract.enabled ?? true, updated_at: Date.now() }
+  const updated: WatchedContract = {
+    ...contract,
+    enabled: contract.enabled ?? true,
+    updated_at: Date.now(),
+  }
   const index = contracts.findIndex((c) => c.id === contract.id)
   if (index === -1) {
     return save(CONTRACTS_KEY, [...contracts, updated])
@@ -270,7 +290,7 @@ export function saveContract(contract: WatchedContract): boolean {
 export function setContractEnabled(id: string, enabled: boolean): boolean {
   const contract = getContract(id)
   if (!contract) return false
-  return saveContract({ ...contract, enabled })
+  return saveContract({ ...contract, enabled: enabled ?? true })
 }
 
 export function toggleContractEnabled(id: string): boolean {
@@ -339,8 +359,6 @@ export function addAlert(alert: AlertPayload | (AlertPayload & { contractId?: st
     contract_id: alert.contract_id ?? (alert as { contractId?: string }).contractId,
   }
   const all = [...load<AlertPayload>(ALERTS_KEY), normalizedAlert]
-  const counts: Record<string, number> = {}
   save(ALERTS_KEY, all)
   return normalizedAlert
 }
-  // Itera

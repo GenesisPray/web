@@ -5,6 +5,7 @@ import {
   resetNotificationThrottle,
   NOTIFY_THROTTLE_MS,
 } from '@/lib/notifications'
+import { STORAGE_KEYS } from '@/lib/storageKeys'
 import type { AlertPayload } from '@/types'
 
 const alert = (h: string): AlertPayload => ({
@@ -42,7 +43,16 @@ describe('notifications', () => {
   it('requests permission on enable and stores preference', async () => {
     mockNotification('default', 'granted')
     expect(await enableNotifications()).toBe(true)
-    expect(localStorage.getItem('txwatch:notifications-enabled')).toBe('1')
+    expect(localStorage.getItem(STORAGE_KEYS.notificationsEnabled)).toBe('1')
+    expect(STORAGE_KEYS.notificationsEnabled).toBe('txwatch_notifications_enabled')
+  })
+
+  it('migrates the legacy notifications-enabled key on read', async () => {
+    mockNotification('granted')
+    localStorage.setItem('txwatch:notifications-enabled', '1')
+    expect(notifyNewAlerts([alert('a')], 'L', '/contracts/1')).toBe(true)
+    expect(localStorage.getItem(STORAGE_KEYS.notificationsEnabled)).toBe('1')
+    expect(localStorage.getItem('txwatch:notifications-enabled')).toBeNull()
   })
 
   it('does not enable when denied', async () => {

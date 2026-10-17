@@ -48,6 +48,23 @@ describe('buildContractSnapshot', () => {
     expect(() => new Date(snap.exportedAt)).not.toThrow();
     expect(snap.exportedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
+
+  it('preserves the enabled field for paused contracts', () => {
+    const withEnabled = [
+      { ...sample[0], enabled: false },
+      { ...sample[1], enabled: true },
+    ];
+    localStorage.setItem(KEY, JSON.stringify(withEnabled));
+    const snap = buildContractSnapshot(KEY);
+    expect(snap.contracts[0].enabled).toBe(false);
+    expect(snap.contracts[1].enabled).toBe(true);
+  });
+
+  it('omits enabled for contracts that never set it', () => {
+    localStorage.setItem(KEY, JSON.stringify(sample));
+    const snap = buildContractSnapshot(KEY);
+    expect(snap.contracts[0].enabled).toBeUndefined();
+  });
 });
 
 describe('exportContractsAsJson', () => {
@@ -63,6 +80,13 @@ describe('exportContractsAsJson', () => {
     const parsed = JSON.parse(json);
     expect(parsed.version).toBe(1);
     expect(parsed.contracts).toHaveLength(2);
+  });
+
+  it('includes enabled: false for paused contracts in exported JSON', () => {
+    const withEnabled = [{ ...sample[0], enabled: false }, sample[1]];
+    localStorage.setItem(KEY, JSON.stringify(withEnabled));
+    const parsed = JSON.parse(exportContractsAsJson(KEY));
+    expect(parsed.contracts[0].enabled).toBe(false);
   });
 });
 
@@ -88,6 +112,13 @@ describe('parseContractSnapshot', () => {
     const bad = JSON.stringify({ version: 1 });
     expect(() => parseContractSnapshot(bad)).toThrow('Invalid snapshot format');
   });
+
+  it('preserves enabled: false through a parse round-trip', () => {
+    const withEnabled = [{ ...sample[0], enabled: false }];
+    localStorage.setItem(KEY, JSON.stringify(withEnabled));
+    const snap = parseContractSnapshot(exportContractsAsJson(KEY));
+    expect(snap.contracts[0].enabled).toBe(false);
+  });
 });
 
 describe('buildContractSnapshot with default key', () => {
@@ -105,5 +136,21 @@ describe('buildContractSnapshot with default key', () => {
     const snapshot = buildContractSnapshot();
     expect(snapshot.count).toBe(1);
     expect(snapshot.contracts[0].id).toBe('c1');
+  });
+
+  it('exports enabled: false for a paused contract written by saveContract', () => {
+    saveContract({
+      id: 'c1',
+      label: 'Alpha',
+      contract_id: 'CDSO4GGZH7KBUQYKOIQDCMCFSRYEPOVDUX7Z4IB5TWNTLT2GDRKDQOYR',
+      network: 'mainnet',
+      rules: [],
+      webhook_url: 'https://hooks.example.com/alpha',
+      created_at: 1,
+      updated_at: 1,
+      enabled: false,
+    });
+    const snapshot = buildContractSnapshot();
+    expect(snapshot.contracts[0].enabled).toBe(false);
   });
 });

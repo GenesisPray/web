@@ -1,6 +1,7 @@
 import type { AlertPayload } from '@/types'
+import { NOTIFICATIONS_ENABLED_KEY, LEGACY_NOTIFICATIONS_ENABLED_KEY } from '@/lib/storageKeys'
 
-export const NOTIFICATIONS_KEY = 'txwatch:notifications-enabled'
+export const NOTIFICATIONS_KEY = NOTIFICATIONS_ENABLED_KEY
 export const NOTIFY_THROTTLE_MS = 10000
 
 let lastNotifiedAt = 0
@@ -12,7 +13,14 @@ export function notificationsSupported(): boolean {
 export function notificationsEnabled(): boolean {
   if (!notificationsSupported() || Notification.permission !== 'granted') return false
   try {
-    return localStorage.getItem(NOTIFICATIONS_KEY) === '1'
+    const current = localStorage.getItem(NOTIFICATIONS_ENABLED_KEY)
+    if (current !== null) return current === '1'
+    // Migrate the legacy colon-prefixed key to the txwatch_ prefix.
+    const legacy = localStorage.getItem(LEGACY_NOTIFICATIONS_ENABLED_KEY)
+    if (legacy === null) return false
+    localStorage.setItem(NOTIFICATIONS_ENABLED_KEY, legacy)
+    localStorage.removeItem(LEGACY_NOTIFICATIONS_ENABLED_KEY)
+    return legacy === '1'
   } catch {
     return false
   }
@@ -27,14 +35,16 @@ export async function enableNotifications(): Promise<boolean> {
       : Notification.permission
   const ok = permission === 'granted'
   try {
-    localStorage.setItem(NOTIFICATIONS_KEY, ok ? '1' : '0')
+    localStorage.setItem(NOTIFICATIONS_ENABLED_KEY, ok ? '1' : '0')
+    localStorage.removeItem(LEGACY_NOTIFICATIONS_ENABLED_KEY)
   } catch {}
   return ok
 }
 
 export function disableNotifications(): void {
   try {
-    localStorage.setItem(NOTIFICATIONS_KEY, '0')
+    localStorage.setItem(NOTIFICATIONS_ENABLED_KEY, '0')
+    localStorage.removeItem(LEGACY_NOTIFICATIONS_ENABLED_KEY)
   } catch {}
 }
 

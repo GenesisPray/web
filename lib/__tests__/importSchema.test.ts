@@ -57,6 +57,27 @@ describe('parseImport', () => {
     expect(r).toMatch(/32/)
   })
 
+  it('preserves the enabled flag when present', () => {
+    expect(validateContractEntry({ ...good, enabled: true })).toBeNull()
+    expect(validateContractEntry({ ...good, enabled: false })).toBeNull()
+  })
+
+  it('omits enabled when absent', () => {
+    const r = parseImport(JSON.stringify({ version: 1, contracts: [good] }))
+    expect(r.errors).toEqual([])
+    expect(r.contracts[0]).not.toHaveProperty('enabled')
+  })
+
+  it('keeps enabled through validateContractEntry and buildSnapshot', () => {
+    const entry = validateContractEntry({ ...good, enabled: false })
+    expect(entry).toBeNull()
+    const snapshot = buildSnapshot([{ ...good, enabled: false } as never])
+    expect(snapshot.contracts[0]).toMatchObject({ enabled: false })
+    const parsed = parseImport(JSON.stringify(snapshot))
+    expect(parsed.errors).toEqual([])
+    expect(parsed.contracts[0].enabled).toBe(false)
+  })
+
   it('de-duplicates admin function names before saving', () => {
     const r = parseImport(
       JSON.stringify({

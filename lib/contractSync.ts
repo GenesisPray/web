@@ -1,5 +1,6 @@
 import type { WatchedContract } from '@/types'
 import { getContracts, saveContract, deleteContract } from '@/lib/storage'
+import { CONTRACTS_KEY, SYNC_STATUS_KEY } from '@/lib/storageKeys'
 import {
   isApiConfigured,
   listContracts,
@@ -15,10 +16,10 @@ export interface SyncStatus {
   at: number
 }
 
-const STATUS_KEY = 'txwatch_sync_status'
+const STATUS_KEY = SYNC_STATUS_KEY
 
 /** Storage key used by the local contract cache; storage events on it signal cross-tab changes. */
-export const CONTRACTS_STORAGE_KEY = 'txwatch_contracts'
+export const CONTRACTS_STORAGE_KEY = CONTRACTS_KEY
 
 /**
  * Subscribe to cross-tab contract changes. The callback fires whenever another
@@ -107,7 +108,7 @@ export async function refreshContracts(): Promise<{ contracts: WatchedContract[]
 export function onContractsChange(callback: () => void): () => void {
   if (typeof window === 'undefined') return () => {}
   const handler = (e: StorageEvent) => {
-    if (e.key === null || e.key === CONTRACTS_KEY) callback()
+    if (e.key === null || e.key === CONTRACTS_STORAGE_KEY) callback()
   }
   window.addEventListener('storage', handler)
   return () => window.removeEventListener('storage', handler)

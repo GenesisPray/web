@@ -92,6 +92,20 @@ describe('saveContract / getContracts', () => {
     expect(contracts[0].id).toBe('c1');
   });
 
+  it('does not touch txwatch_alerts when saving a contract', () => {
+    const sentinel = JSON.stringify([alert1, alert2]);
+    localStorage.setItem('txwatch_alerts', sentinel);
+    saveContract(contract1);
+    expect(localStorage.getItem('txwatch_alerts')).toBe(sentinel);
+  });
+
+  it('round-trips enabled: false through save and load', () => {
+    saveContract({ ...contract1, enabled: false });
+    const contracts = getContracts();
+    expect(contracts).toHaveLength(1);
+    expect(contracts[0].enabled).toBe(false);
+  });
+
   it('retrieves multiple saved contracts', () => {
     saveContract(contract1);
     saveContract(contract2);

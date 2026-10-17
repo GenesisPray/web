@@ -95,6 +95,15 @@ export function formatTime(timestamp: number): string {
   return _timeFormatter.format(new Date(timestamp))
 }
 
+/**
+ * Cached relative-time formatter (e.g. "3 minutes ago").
+ * Shared across calls — constructing an Intl.RelativeTimeFormat is expensive
+ * and formatRelativeTime is called for every row/card on each refresh tick.
+ */
+const _relativeTimeFormatter = new Intl.RelativeTimeFormat(undefined, {
+  numeric: 'auto',
+})
+
 const RELATIVE_UNITS: [Intl.RelativeTimeFormatUnit, number][] = [
   ['year', 365 * 24 * 60 * 60 * 1000],
   ['month', 30 * 24 * 60 * 60 * 1000],
@@ -113,17 +122,16 @@ export function formatRelativeTime(
   timestamp: number,
   now: number = Date.now(),
 ): string {
-  const formatter = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' })
   const diff = timestamp - now
   const absDiff = Math.abs(diff)
 
   for (const [unit, ms] of RELATIVE_UNITS) {
     if (absDiff >= ms || unit === 'second') {
-      return formatter.format(Math.round(diff / ms), unit)
+      return _relativeTimeFormatter.format(Math.round(diff / ms), unit)
     }
   }
 
-  return formatter.format(0, 'second')
+  return _relativeTimeFormatter.format(0, 'second')
 }
 
 /**

@@ -9,8 +9,8 @@
 // Fix the timezone before the module is evaluated and caches formatters.
 process.env.TZ = 'UTC'
 
-import { describe, expect, it } from 'vitest'
-import { formatDate, formatDateTime, formatTime } from '../lib/format'
+import { describe, expect, it, vi } from 'vitest'
+import { formatDate, formatDateTime, formatTime, formatRelativeTime } from '../lib/format'
 
 // 2026-05-29T15:04:00Z  →  Unix ms
 const TS = new Date('2026-05-29T15:04:00Z').getTime()
@@ -63,5 +63,30 @@ describe('formatTime', () => {
   it('includes a short timezone name', () => {
     const result = formatTime(TS)
     expect(result).toMatch(/UTC|GMT/)
+  })
+})
+
+describe('formatRelativeTime', () => {
+  it('formats past and future offsets correctly', () => {
+    const now = TS
+    expect(formatRelativeTime(now - 5 * 60_000, now)).toMatch(/5 minutes ago/)
+    expect(formatRelativeTime(now - 2 * 3_600_000, now)).toMatch(/2 hours ago/)
+    expect(formatRelativeTime(now + 3 * 86_400_000, now)).toMatch(/in 3 days/)
+  })
+
+  it('reuses a single cached RelativeTimeFormat instance across calls', () => {
+    const now = TS
+    // Warm the cache so the spy only observes reuse, not first construction.
+    formatRelativeTime(now - 60_000, now)
+
+    const spy = vi.spyOn(Intl, 'RelativeTimeFormat')
+    try {
+      formatRelativeTime(now - 60_000, now)
+      formatRelativeTime(now - 120_000, now)
+      formatRelativeTime(now + 3_600_000, now)
+      expect(spy).not.toHaveBeenCalled()
+    } finally {
+      spy.mockRestore()
+    }
   })
 })

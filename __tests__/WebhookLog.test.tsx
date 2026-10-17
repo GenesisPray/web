@@ -1,7 +1,8 @@
 import { vi } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, act } from '@testing-library/react'
 import WebhookLog from '@/components/WebhookLog'
 import { AlertPayload } from '@/types'
+import { formatRelativeTime } from '@/lib/format'
 
 const explorerTxUrl = vi.fn((network: string, hash: string) => `https://stellar.expert/explorer/${network}/tx/${hash}`)
 
@@ -25,6 +26,10 @@ const baseAlert: AlertPayload = {
 describe('WebhookLog', () => {
   beforeEach(() => {
     explorerTxUrl.mockClear()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
   })
 
   it('renders empty state when there are no alerts', () => {
@@ -129,5 +134,29 @@ describe('WebhookLog', () => {
     expect(screen.getByRole('dialog')).toBeInTheDocument()
     fireEvent.keyDown(document, { key: 'Escape' })
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('refreshes relative labels when the shared clock advances', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2024-01-15T12:05:00Z'))
+    render(<WebhookLog alerts={[baseAlert]} network="testnet" />)
+
+    const initialLabel = formatRelativeTime(baseAlert.timestamp)
+    expect(screen.getByText(initialLabel)).toBeInTheDocument()
+
+    act(() => {
+      vi.advanceTimersByTime(5 * 60 * 1000)
+    })
+
+    const updatedLabel = formatRelativeTime(baseAlert.timestamp)
+    expect(updatedLabel).not.toBe(initialLabel)
+    expect(screen.getByText(updatedLabel)).toBeInTheDocument()
+  })
+
+  it('does not create a per-component interval', () => {
+    const setIntervalSpy = vi.spyOn(globalThis, 'setInterval')
+    render(<WebhookLog alerts={[baseAlert]} network="testnet" />)
+    expect(setIntervalSpy).not.toHaveBeenCalled()
+    setIntervalSpy.mockRestore()
   })
 })

@@ -1,10 +1,11 @@
 import Link from 'next/link'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import { WatchedContract } from '@/types'
 import NetworkBadge from './NetworkBadge'
 import { getSyncStatuses } from '@/lib/contractSync'
 import { truncateId } from '@/lib/stellar'
 import { formatDate, formatRelativeTime } from '@/lib/format'
+import { useNow } from '@/lib/useNow'
 
 interface ContractCardProps {
   contract: WatchedContract
@@ -27,18 +28,12 @@ export default function ContractCard({
   const sync = getSyncStatuses()[contract.id]
   const ref = useRef<HTMLAnchorElement>(null)
   const paused = contract.enabled === false
-  const [now, setNow] = useState(() => Date.now())
+  const now = useNow(60_000)
 
   useEffect(() => {
     if (!highlight) return
     ref.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
   }, [highlight])
-
-  useEffect(() => {
-    if (!lastAlertTime) return
-    const interval = setInterval(() => setNow(Date.now()), 60_000)
-    return () => clearInterval(interval)
-  }, [lastAlertTime])
 
   const cardClassName = `block bg-zinc-900 border rounded-xl p-5 transition-all group ${
     selected

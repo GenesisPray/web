@@ -8,16 +8,14 @@ import { truncateId } from '@/lib/stellar'
 import CopyButton from '@/components/CopyButton'
 import { formatDateTime, formatRelativeTime } from '@/lib/format'
 import { formatAmount } from '@/lib/formatAmount'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import AlertRuleBadge from './AlertRuleBadge'
 import Modal from './Modal'
 import WebhookLogCard from './WebhookLogCard'
-import { formatDateTime } from '@/lib/format'
-import { useEffect, useMemo, useState } from 'react'
-import AlertRuleBadge from './AlertRuleBadge'
 import { buildCSV } from '@/lib/csv'
 import SortToggle from './SortToggle'
 import { useSortedLog } from '@/hooks/useSortedLog'
+import { useNow } from '@/hooks/useNow'
 import { RULE_META } from '@/lib/ruleMeta'
 
 type DateRange = 'all' | '24h' | '7d' | '30d' | 'custom'
@@ -78,13 +76,9 @@ function exportCSV(alerts: AlertPayload[]) {
 export default function WebhookLog({ alerts, network }: WebhookLogProps) {
   const [selectedFilter, setSelectedFilter] = useState<AlertRuleType | null>(null)
   const [selectedAlert, setSelectedAlert] = useState<AlertPayload | null>(null)
-  const [, setNow] = useState(() => Date.now())
 
-  // Refresh relative time labels every minute
-  useEffect(() => {
-    const interval = setInterval(() => setNow(Date.now()), 60_000)
-    return () => clearInterval(interval)
-  }, [])
+  // Refresh relative time labels every minute from the shared clock
+  useNow(60_000)
   const [search, setSearch] = useState('')
   const [range, setRange] = useState<DateRange>('all')
   const [customFrom, setCustomFrom] = useState('')

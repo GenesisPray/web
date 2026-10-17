@@ -265,6 +265,69 @@ describe('per-contract alert cap', () => {
     expect(alerts.some((a) => a.transaction_hash === 'h501')).toBe(true)
     expect(alerts.some((a) => a.transaction_hash === 'h1')).toBe(false)
   })
+
+  it('keeps the newest 500 of 510 inserted alerts and drops the 10 oldest', () => {
+    for (let i = 1; i <= 510; i++) addAlert(makeAlert(i))
+    const alerts = getAlerts('CX', 'testnet')
+    expect(alerts).toHaveLength(500)
+    expect(alerts[0].transaction_hash).toBe('h510')
+    expect(alerts[alerts.length - 1].transaction_hash).toBe('h11')
+    for (let i = 1; i <= 10; i++) {
+      expect(alerts.some((a) => a.transaction_hash === `h${i}`)).toBe(false)
+    }
+  })
+
+  it('enforces the cap per (contract_id, network) without touching other contracts', async () => {
+    const s = await import('../storage')
+    const other = { ...makeAlert(1), contract_id: 'CY' }
+    s.addAlert(other)
+    for (let i = 1; i <= 510; i++) addAlert(makeAlert(i))
+    expect(getAlerts('CX', 'testnet')).toHaveLength(500)
+    expect(getAlerts('CY', 'testnet')).toHaveLength(1)
+  })
+
+  it('honours a configurable cap', async () => {
+    const s = await import('../storage')
+    const original = s.getMaxAlertsPerContract()
+    try {
+      s.setMaxAlertsPerContract(3)
+      expect(s.getMaxAlertsPerContract()).toBe(3)
+      for (let i = 1; i <= 5; i++) addAlert(makeAlert(i))
+      const alerts = getAlerts('CX', 'testnet')
+      expect(alerts).toHaveLength(3)
+      expect(alerts.map((a) => a.transaction_hash)).toEqual(['h5', 'h4', 'h3'])
+    } finally {
+      s.setMaxAlertsPerContract(original)
+    }
+  })
+})
+
+describe('retention commit semantics', () => {
+  const DAY = 24 * 60 * 60 * 1000
+  const alert = (age: number) => ({
+    label: 'a', contract_id: 'CX', network: 'testnet', rule_triggered: 'AnyTransaction',
+    transaction_hash: `h${age}`, timestamp: Date.now() - age * DAY, horizon_link: '',
+  })
+
+  it('does not prune on intermediate keystrokes, only on commit', async () => {
+    const s = await import('../storage')
+    localStorage.setItem('txwatch_alerts', JSON.stringify([alert(100), alert(10), alert(1)]))
+    // Simulate typing "1" then "18" then "180" without committing.
+    s.previewRetentionDays(1)
+    s.previewRetentionDays(18)
+    s.previewRetentionDays(180)
+    expect(s.getAlerts('CX', 'testnet')).toHaveLength(3)
+    // Commit the final value.
+    s.setRetentionDays(180)
+    expect(s.getRetentionDays()).toBe(180)
+    expect(s.getAlerts('CX', 'testnet')).toHaveLength(3)
+  })
+
+  it('reports how many alerts a shrink would delete', async () => {
+    const s = await import('../storage')
+    localStorage.setItem('txwatch_alerts', JSON.stringify([alert(100), alert(10), alert(1)]))
+    expect(s.countAlertsOlderThan(5)).toBe(2)
+  })
 })
 
 describe('seedMockAlerts', () => {

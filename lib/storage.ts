@@ -63,6 +63,7 @@ const STORAGE_QUOTA_BYTES = 5 * 1024 * 1024 // 5MB typical limit
 const MAX_ALERTS_PER_CONTRACT = 500
 const DEFAULT_RETENTION_DAYS = 90
 const RETENTION_KEY = 'txwatch_alert_retention_days'
+const ALERT_CAP_KEY = 'txwatch_alert_cap_per_contract'
 
 export function getRetentionDays(): number {
   const raw = Number(getStorage()?.getItem(RETENTION_KEY))
@@ -74,6 +75,17 @@ export function setRetentionDays(days: number) {
   if (!storage || !Number.isFinite(days) || days < 1) return
   storage.setItem(RETENTION_KEY, String(Math.floor(days)))
   pruneOldAlerts()
+}
+
+export function getAlertCap(): number {
+  const raw = Number(getStorage()?.getItem(ALERT_CAP_KEY))
+  return Number.isFinite(raw) && raw >= 1 ? Math.floor(raw) : MAX_ALERTS_PER_CONTRACT
+}
+
+export function setAlertCap(cap: number) {
+  const storage = getStorage()
+  if (!storage || !Number.isFinite(cap) || cap < 1) return
+  storage.setItem(ALERT_CAP_KEY, String(Math.floor(cap)))
 }
 
 function getStorageSize(): number {
@@ -185,7 +197,8 @@ function saveInternal<T>(key: string, data: T[]): boolean {
 function getStorageVersion(): number {
   const storage = getStorage()
   if (!storage) return CURRENT_STORAGE_VERSION
-  return parseInt(storage.getItem(STORAGE_VERSION_KEY) ?? '0', 10)
+  const parsed = parseInt(storage.getItem(STORAGE_VERSION_KEY) ?? '0', 10)
+  return Number.isFinite(parsed) ? parsed : 0
 }
 
 function setStorageVersion(version: number) {
@@ -339,8 +352,33 @@ export function addAlert(alert: AlertPayload | (AlertPayload & { contractId?: st
     contract_id: alert.contract_id ?? (alert as { contractId?: string }).contractId,
   }
   const all = [...load<AlertPayload>(ALERTS_KEY), normalizedAlert]
-  const counts: Record<string, number> = {}
-  save(ALERTS_KEY, all)
+  save(ALERTS_KEY, capAlertsPerContract(all))
   return normalizedAlert
 }
-  // Itera
+
+// Enforces the per-(contract_id, network) alert cap, dropping the oldest entries.
+function capAlertsPerContract(alerts: AlertPayload[]): AlertPayload[] {
+  const cap = getAlertCap()
+  const groups = new Map<string, AlertPayload[]>()
+  for (const alert of alerts) {
+    const key = `${alert.contract_id}::${alert.network ?? ''}`
+    const group = groups.get(key)
+    if (group) group.push(alert)
+    else groups.set(key, [alert])
+  }
+
+  const kept = new Set<AlertPayload>()
+  for (const group of groups.values()) {
+    if (group.length <= cap) {
+      for (const alert of group) kept.add(alert)
+      continue
+    }
+    const newest = group
+      .slice()
+      .sort((a, b) => b.timestamp - a.timestamp)
+      .slice(0, cap)
+    for (const alert of newest) kept.add(alert)
+  }
+
+  return alerts.filter((alert) => kept.has(alert))
+}

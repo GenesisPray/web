@@ -16,12 +16,12 @@ Part of the [Tx-wats](https://github.com/Tx-wats) GitHub org.
 
 ## Tech stack
 
-| | |
-|---|---|
-| Framework | Next.js 14 (App Router) |
-| Language | TypeScript |
-| Styling | Tailwind CSS |
-| Wallet | Freighter (Stellar identity) |
+|            |                                      |
+| ---------- | ------------------------------------ |
+| Framework  | Next.js 14 (App Router)              |
+| Language   | TypeScript                           |
+| Styling    | Tailwind CSS                         |
+| Wallet     | Freighter (Stellar identity)         |
 | Blockchain | `@stellar/stellar-sdk` + Horizon API |
 
 ## Getting started
@@ -103,9 +103,17 @@ See [Stellar integration](#stellar-integration) for implementation details.
 
 ## Environment variables
 
-| Variable | Description |
-|---|---|
-| `NEXT_PUBLIC_API_URL` | Base URL of the txwatch-core API (optional) |
+| Variable                                | Description                                                                    |
+| --------------------------------------- | ------------------------------------------------------------------------------ |
+| `NEXT_PUBLIC_API_URL`                   | Base URL of the txwatch-core API. When empty, the app uses local-only mode.    |
+| `NEXT_PUBLIC_SOROBAN_RPC_URL`           | Optional Soroban RPC URL used for every network unless overridden per network. |
+| `NEXT_PUBLIC_SOROBAN_RPC_URL_MAINNET`   | Optional Mainnet Soroban RPC URL.                                              |
+| `NEXT_PUBLIC_SOROBAN_RPC_URL_TESTNET`   | Optional Testnet Soroban RPC URL.                                              |
+| `NEXT_PUBLIC_SOROBAN_RPC_URL_FUTURENET` | Optional Futurenet Soroban RPC URL.                                            |
+| `NEXT_PUBLIC_HORIZON_URL`               | Optional Horizon URL used for every network unless overridden per network.     |
+| `NEXT_PUBLIC_HORIZON_URL_MAINNET`       | Optional Mainnet Horizon URL.                                                  |
+| `NEXT_PUBLIC_HORIZON_URL_TESTNET`       | Optional Testnet Horizon URL.                                                  |
+| `NEXT_PUBLIC_HORIZON_URL_FUTURENET`     | Optional Futurenet Horizon URL.                                                |
 
 ## Stellar integration
 
@@ -119,12 +127,12 @@ This section documents how the dashboard integrates with the Stellar network and
 import { HORIZON_URLS, SOROBAN_RPC_URLS } from '@/lib/stellar'
 
 // Horizon REST - account balances, transaction history
-HORIZON_URLS.mainnet    // https://horizon.stellar.org
-HORIZON_URLS.testnet    // https://horizon-testnet.stellar.org
-HORIZON_URLS.futurenet  // https://horizon-futurenet.stellar.org
+HORIZON_URLS.mainnet // https://horizon.stellar.org
+HORIZON_URLS.testnet // https://horizon-testnet.stellar.org
+HORIZON_URLS.futurenet // https://horizon-futurenet.stellar.org
 
 // Soroban JSON-RPC - contract simulation, ledger entries
-SOROBAN_RPC_URLS.testnet  // https://soroban-testnet.stellar.org
+SOROBAN_RPC_URLS.testnet // https://soroban-testnet.stellar.org
 ```
 
 ### Querying Horizon
@@ -141,7 +149,10 @@ export function getHorizonServer(network: Network) {
 }
 
 // Fetch recent transactions for a contract account
-export async function fetchContractTransactions(network: Network, contractId: string) {
+export async function fetchContractTransactions(
+  network: Network,
+  contractId: string
+) {
   const server = getHorizonServer(network)
   const { records } = await server
     .transactions()
@@ -187,8 +198,8 @@ import { readFreighterConnection, getWalletNetwork } from '@/lib/freighter'
 
 // Read the key after connection (passed by FreighterConnect via onConnect callback)
 const connection = await readFreighterConnection()
-const publicKey  = connection?.publicKey ?? null
-const network    = await getWalletNetwork()   // e.g. "TESTNET"
+const publicKey = connection?.publicKey ?? null
+const network = await getWalletNetwork() // e.g. "TESTNET"
 ```
 
 Wallet state is shared through a `txwatch:wallet` CustomEvent rather than per-component state, so connecting or disconnecting from one button updates every other wallet-aware component. Prefer the hook over reading the global directly:
@@ -231,7 +242,7 @@ Alert history rows link directly to Stellar Expert for transaction inspection:
 ```ts
 import { explorerTxUrl, explorerContractUrl } from '@/lib/stellar'
 
-explorerTxUrl('testnet', txHash)         // https://stellar.expert/explorer/testnet/tx/<hash>
+explorerTxUrl('testnet', txHash) // https://stellar.expert/explorer/testnet/tx/<hash>
 explorerContractUrl('mainnet', contractId) // https://stellar.expert/explorer/public/contract/<id>
 ```
 
@@ -272,7 +283,9 @@ Requests carry an `X-TxWatch-Signature: sha256=<hex>` header: the HMAC-SHA256 of
 import crypto from 'node:crypto'
 
 function verify(rawBody, header, secret) {
-  const expected = 'sha256=' + crypto.createHmac('sha256', secret).update(rawBody).digest('hex')
+  const expected =
+    'sha256=' +
+    crypto.createHmac('sha256', secret).update(rawBody).digest('hex')
   const a = Buffer.from(expected)
   const b = Buffer.from(header ?? '')
   return a.length === b.length && crypto.timingSafeEqual(a, b)
@@ -289,11 +302,14 @@ def verify(raw_body: bytes, header: str, secret: str) -> bool:
 
 ## CI
 
-Every push and pull request to `main` runs the full CI pipeline via GitHub Actions:
+Every push and pull request to `main` runs these GitHub Actions checks:
 
-```
-Lint -> Type-check -> Build
-```
+- Lint (`npm run lint`)
+- Formatting (`npm run format:check`)
+- Type-check (`npm run typecheck`)
+- Dependency audit (`npm audit --audit-level=high`; currently non-blocking)
+- Tests (`npm test`)
+- Production build (`npm run build`)
 
 See [`.github/workflows/ci.yml`](./.github/workflows/ci.yml).
 
@@ -302,7 +318,6 @@ See [`.github/workflows/ci.yml`](./.github/workflows/ci.yml).
 ### Near-term
 
 - [ ] Multi-signature contract support
-- [ ] Advanced filtering and search for alert history
 
 ### Medium-term
 
@@ -323,18 +338,16 @@ See [`.github/workflows/ci.yml`](./.github/workflows/ci.yml).
 
 ## Data Persistence
 
-The current app stores all contracts, alert rules, alert history, and settings in **browser localStorage** rather than a backend database. This means:
+The app stores a local cache of contracts, alert history, and preferences in **browser localStorage**. When `NEXT_PUBLIC_API_URL` is configured, contract records also sync with the core API; the browser cache remains in use. This means:
 
-- Contracts, rules, alert history, and settings are persisted locally per browser/device
-- Data is not synced across devices or browsers
-- Clearing browser storage will delete all saved contracts and rules
-- No server-side persistence layer is currently implemented
-
-When a backend API is integrated (via `NEXT_PUBLIC_API_URL`), the app will transition to server-side persistence.
+- The local cache and preferences are specific to each browser/device
+- Contract records sync through the core API when it is configured
+- Clearing browser storage removes the local cache and preferences
+- Use export/import backups to move local alert history and settings between browsers
 
 ### Backup and restore
 
-Because localStorage is the only persistence layer, Settings → **Export contracts** / **Import contracts** can move your data between browsers. Both export and import let you choose what to include:
+Settings → **Export contracts** / **Import contracts** can move your data between browsers. Both export and import let you choose what to include:
 
 - **Contracts only** — just the registered contracts and their alert rules
 - **Everything** — contracts plus alert history, retention days, notification preference, and view preferences
@@ -357,40 +370,50 @@ The older contracts-only format (no `version` field, or `version: 1`) is still a
 The dashboard currently operates in two modes:
 
 ### Mock/Local Mode (Default)
+
 - Contract registration and alert rule configuration are stored locally
 - Webhook testing uses mock payloads
 - No real-time monitoring occurs without a backend
 
 ### API Mode (When `NEXT_PUBLIC_API_URL` is set)
+
 - Contracts and rules sync with the txwatch-core backend
 - Real webhook delivery and monitoring depend on the backend service
-- Requires the [tx-watch-core](https://github.com/Tx-wats/core) API running
+- Requires the [stellar-txwatch-core](https://github.com/Tx-wats/stellar-txwatch-core) API running
 
 **Note:** The dashboard itself does not monitor transactions. Monitoring is performed by the core engine. The dashboard is a configuration and monitoring UI only.
 
 ## Screenshots
 
 ### Landing Page
+
 The landing page introduces the dashboard and provides quick access to wallet connection and contract registration.
 
 ### Dashboard
+
 The dashboard displays registered contracts in a grid layout with summary cards showing contract ID, network, and alert rule count.
 
 ### Contract Detail
+
 The contract detail page shows:
+
 - Contract metadata (ID, network, registration date)
 - Configured alert rules with type badges
 - Webhook delivery history with transaction links to Stellar Expert
 
 ### Add Contract Form
+
 The form allows users to:
+
 - Enter a contract ID (validated against Soroban address format)
 - Select the network (Mainnet, Testnet, Futurenet)
 - Configure alert rules (large transfers, function calls, admin actions, failed transactions)
 - Test webhook delivery before going live
 
 ### Settings
+
 The settings page lets users:
+
 - Export contracts only, or everything (contracts, alert history, and settings) as versioned JSON
 - Import a contracts-only (v1) or full (v2) backup, choosing whether to restore contracts only or everything
 - Configure alert retention days, notification preference, and view preferences
@@ -400,6 +423,7 @@ The settings page lets users:
 When reporting issues or requesting features, please include:
 
 ### For Bug Reports
+
 - Steps to reproduce the issue
 - Expected vs. actual behavior
 - Browser and OS information
@@ -407,6 +431,7 @@ When reporting issues or requesting features, please include:
 - Whether the issue occurs in mock mode or with a backend API
 
 ### For Feature Requests
+
 - Clear description of the desired functionality
 - Use case or problem it solves
 - Suggested implementation approach (if any)
@@ -420,9 +445,8 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md).
 
 ## License
 
-MIT
+MIT License. See [LICENSE](./LICENSE) for the full text.
 
-## Handsoff notes
+## Security
 
-<!-- handsoff-issue-37 -->
-- #37: Stop Using Array Indexes as React Keys for Rules and Alerts
+Please report vulnerabilities using the private process in [SECURITY.md](./SECURITY.md).

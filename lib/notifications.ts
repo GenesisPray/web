@@ -3,14 +3,33 @@ import type { AlertPayload } from '@/types'
 export const NOTIFICATIONS_KEY = 'txwatch:notifications-enabled'
 export const NOTIFY_THROTTLE_MS = 10000
 
-let lastNotifiedAt = 0
+interface ContractNotificationState {
+  lastNotifiedAt: number
+  queuedAlerts: AlertPayload[]
+  contractLabel: string
+  contractPath: string
+  timer: ReturnType<typeof setTimeout> | null
+}
+
+const notificationStateByContract = new Map<string, ContractNotificationState>()
+let navigateToContract: ((path: string) => void) | null = null
+
+export function registerNotificationNavigation(
+  navigate: (path: string) => void
+): () => void {
+  navigateToContract = navigate
+  return () => {
+    if (navigateToContract === navigate) navigateToContract = null
+  }
+}
 
 export function notificationsSupported(): boolean {
   return typeof window !== 'undefined' && 'Notification' in window
 }
 
 export function notificationsEnabled(): boolean {
-  if (!notificationsSupported() || Notification.permission !== 'granted') return false
+  if (!notificationsSupported() || Notification.permission !== 'granted')
+    return false
   try {
     return localStorage.getItem(NOTIFICATIONS_KEY) === '1'
   } catch {
@@ -38,22 +57,15 @@ export function disableNotifications(): void {
   } catch {}
 }
 
-/**
- * Notify about new alerts for a contract. Bursts are grouped into a single
- * notification and calls within NOTIFY_THROTTLE_MS of the last one are dropped.
- * Returns true if a notification was shown.
- */
-export function notifyNewAlerts(
+function showNotification(
   alerts: AlertPayload[],
   contractLabel: string,
-  contractPath: string,
-  now: number = Date.now()
-): boolean {
-  if (alerts.length === 0 || !notificationsEnabled()) return false
-  if (now - lastNotifiedAt < NOTIFY_THROTTLE_MS) return false
-  lastNotifiedAt = now
-
-  const title = alerts.length === 1 ? `New alert: ${contractLabel}` : `${alerts.length} new alerts: ${contractLabel}`
+  contractPath: string
+): void {
+  const title =
+    alerts.length === 1
+      ? `New alert: ${contractLabel}`
+      : `${alerts.length} new alerts: ${contractLabel}`
   const body =
     alerts.length === 1
       ? `${alerts[0].rule_triggered} (${alerts[0].transaction_hash.slice(0, 12)}...)`
@@ -61,12 +73,68 @@ export function notifyNewAlerts(
   const n = new Notification(title, { body, tag: `txwatch:${contractPath}` })
   n.onclick = () => {
     window.focus()
-    window.location.assign(contractPath)
+    navigateToContract?.(contractPath)
   }
-  return true
+}
+
+function flushQueuedAlerts(contractPath: string): void {
+  const state = notificationStateByContract.get(contractPath)
+  if (!state) return
+
+  state.timer = null
+  if (state.queuedAlerts.length === 0) return
+  if (!notificationsEnabled()) {
+    state.queuedAlerts = []
+    return
+  }
+
+  const queued = state.queuedAlerts
+  state.queuedAlerts = []
+  state.lastNotifiedAt += NOTIFY_THROTTLE_MS
+  showNotification(queued, state.contractLabel, state.contractPath)
+}
+
+/** Notify per contract, delivering throttled alerts together after the cooldown. */
+export function notifyNewAlerts(
+  alerts: AlertPayload[],
+  contractLabel: string,
+  contractPath: string,
+  now: number = Date.now()
+): boolean {
+  if (alerts.length === 0 || !notificationsEnabled()) return false
+
+  const state = notificationStateByContract.get(contractPath)
+  if (!state || now - state.lastNotifiedAt >= NOTIFY_THROTTLE_MS) {
+    const queuedAlerts = state?.queuedAlerts ?? []
+    if (state?.timer) clearTimeout(state.timer)
+    showNotification([...queuedAlerts, ...alerts], contractLabel, contractPath)
+    notificationStateByContract.set(contractPath, {
+      lastNotifiedAt: now,
+      queuedAlerts: [],
+      contractLabel,
+      contractPath,
+      timer: null,
+    })
+    return true
+  }
+
+  state.queuedAlerts.push(...alerts)
+  state.contractLabel = contractLabel
+  if (!state.timer) {
+    const remaining = Math.max(
+      0,
+      NOTIFY_THROTTLE_MS - (now - state.lastNotifiedAt)
+    )
+    state.timer = setTimeout(() => flushQueuedAlerts(contractPath), remaining)
+  }
+  return false
 }
 
 /** Test helper. */
 export function resetNotificationThrottle(): void {
-  lastNotifiedAt = 0
+  for (const state of notificationStateByContract.values()) {
+    if (state.timer) clearTimeout(state.timer)
+  }
+  notificationStateByContract.clear()
+  navigateToContract = null
 }

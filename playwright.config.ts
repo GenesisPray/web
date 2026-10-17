@@ -1,4 +1,9 @@
-import { defineConfig, devices } from '@playwright/test';
+import { defineConfig, devices } from '@playwright/test'
+
+const chromiumProject = {
+  name: 'chromium',
+  use: { ...devices['Desktop Chrome'] },
+}
 
 export default defineConfig({
   testDir: './e2e',
@@ -12,24 +17,26 @@ export default defineConfig({
     trace: 'on-first-retry',
   },
 
-  projects: [
-    {
-      name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
-    },
-    {
-      name: 'firefox',
-      use: { ...devices['Desktop Firefox'] },
-    },
-    {
-      name: 'webkit',
-      use: { ...devices['Desktop Safari'] },
-    },
-  ],
+  projects: process.env.CI
+    ? [chromiumProject]
+    : [
+        chromiumProject,
+        {
+          name: 'firefox',
+          use: { ...devices['Desktop Firefox'] },
+        },
+        {
+          name: 'webkit',
+          use: { ...devices['Desktop Safari'] },
+        },
+      ],
 
   webServer: {
-    command: 'npm run dev',
+    command: 'npm run build && npm run start',
     url: 'http://localhost:3000',
     reuseExistingServer: !process.env.CI,
+    env: {
+      NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL ?? '',
+    },
   },
-});
+})

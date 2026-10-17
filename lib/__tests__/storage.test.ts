@@ -9,6 +9,7 @@ import {
   deleteAlert,
   seedMockAlerts,
   addContract,
+  replaceContracts,
   DuplicateContractError,
 } from '../storage';
 import { onStorageError, clearStorageErrorHandlers } from '../storageLogger';
@@ -99,6 +100,54 @@ describe('saveContract / getContracts', () => {
   });
 
   it('returns empty array when no contracts saved (empty fallback)', () => {
+    expect(getContracts()).toEqual([]);
+  });
+});
+
+describe('replaceContracts', () => {
+  it('replaces the entire contract list', () => {
+    saveContract(contract1);
+    replaceContracts([contract2]);
+    const contracts = getContracts();
+    expect(contracts).toHaveLength(1);
+    expect(contracts[0].id).toBe('c2');
+  });
+
+  it('preserves each contract updated_at exactly as provided', () => {
+    const serverContract: WatchedContract = {
+      ...contract1,
+      created_at: 1000,
+      updated_at: 1234567890,
+    };
+    replaceContracts([serverContract]);
+    const contracts = getContracts();
+    expect(contracts).toHaveLength(1);
+    expect(contracts[0].updated_at).toBe(1234567890);
+    expect(contracts[0].created_at).toBe(1000);
+  });
+
+  it('does not rewrite updated_at to Date.now()', () => {
+    const before = Date.now();
+    replaceContracts([{ ...contract1, updated_at: 42 }]);
+    const after = Date.now();
+    const stored = getContracts()[0];
+    expect(stored.updated_at).toBe(42);
+    expect(stored.updated_at).toBeLessThan(before);
+    expect(stored.updated_at).toBeLessThan(after);
+  });
+
+  it('does not delete alerts for contracts absent from the new list', () => {
+    saveContract(contract1);
+    addAlert(alert1);
+    addAlert(alert2);
+    replaceContracts([contract2]);
+    expect(getContracts().map((c) => c.id)).toEqual(['c2']);
+    expect(getAlerts('c1', 'testnet')).toHaveLength(2);
+  });
+
+  it('writes an empty list when given an empty array', () => {
+    saveContract(contract1);
+    replaceContracts([]);
     expect(getContracts()).toEqual([]);
   });
 });

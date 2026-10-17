@@ -1,4 +1,10 @@
 import { apiFetch } from '@/lib/api'
+import {
+  FUNCTION_NAME_REGEX,
+  SOROBAN_SYMBOL_MAX_LENGTH,
+  isValidFunctionName,
+  sanitizeAdminFunctionNames,
+} from '@/lib/soroban'
 import type { WatchedContract } from '@/types'
 
 /**
@@ -10,46 +16,9 @@ import type { WatchedContract } from '@/types'
  * Contract objects use the same shape as the local WatchedContract type.
  */
 
-/** Soroban symbols are limited to 32 characters. */
-export const SOROBAN_SYMBOL_MAX_LENGTH = 32
-
-/**
- * Same validation used for FunctionCalled names: a Soroban symbol must be
- * non-empty, at most 32 characters, and contain only letters, digits, and
- * underscores (no leading digit, no dashes).
- */
-export const FUNCTION_NAME_REGEX = /^[A-Za-z_][A-Za-z0-9_]{0,31}$/
-
-export function isValidFunctionName(name: string): boolean {
-  return FUNCTION_NAME_REGEX.test(name)
-}
-
-/**
- * Validate and de-duplicate admin function names before saving.
- * Returns the cleaned list plus the specific names that were rejected so the
- * caller can surface which value is invalid.
- */
-export function sanitizeAdminFunctionNames(names: string[]): {
-  valid: string[]
-  invalid: string[]
-} {
-  const valid: string[] = []
-  const invalid: string[] = []
-  const seen = new Set<string>()
-
-  for (const raw of names) {
-    const name = typeof raw === 'string' ? raw.trim() : ''
-    if (!isValidFunctionName(name)) {
-      invalid.push(name)
-      continue
-    }
-    if (seen.has(name)) continue
-    seen.add(name)
-    valid.push(name)
-  }
-
-  return { valid, invalid }
-}
+// Function-name validation lives in lib/soroban.ts; re-exported here so
+// existing imports from '@/lib/contractsApi' keep working.
+export { FUNCTION_NAME_REGEX, SOROBAN_SYMBOL_MAX_LENGTH, isValidFunctionName, sanitizeAdminFunctionNames }
 
 /**
  * Filter params supported by the contracts page. The dashboard stat tiles
@@ -146,8 +115,6 @@ export function updateContract(contract: WatchedContract): Promise<WatchedContra
   })
 }
 
-export async function removeContract(id: string): Promise<void> {
-  const base = process.env.NEXT_PUBLIC_API_URL ?? ''
-  const res = await fetch(`${base}/contracts/${encodeURIComponent(id)}`, { method: 'DELETE' })
-  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+export function removeContract(id: string): Promise<void> {
+  return apiFetch<void>(`/contracts/${encodeURIComponent(id)}`, { method: 'DELETE' })
 }

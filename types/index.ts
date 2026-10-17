@@ -1,3 +1,5 @@
+import { isValidFunctionName } from '@/lib/soroban'
+
 export type Network = 'mainnet' | 'testnet' | 'futurenet'
 
 export type AlertRuleType =
@@ -49,12 +51,18 @@ export function parseAlertRule(value: unknown): AlertRule | null {
     case 'LargeTransfer':
       if (typeof r.threshold_xlm !== 'number' || !isFinite(r.threshold_xlm) || r.threshold_xlm < 0) return null
       return { ...base, type: r.type, threshold_xlm: r.threshold_xlm }
-    case 'AdminFunctionCalled':
+    case 'AdminFunctionCalled': {
       if (!Array.isArray(r.function_names) || !r.function_names.every((n) => typeof n === 'string')) return null
-      return { ...base, type: r.type, function_names: r.function_names as string[] }
-    case 'FunctionCalled':
-      if (typeof r.function_name !== 'string' || !r.function_name.trim()) return null
-      return { ...base, type: r.type, function_name: r.function_name }
+      const names = (r.function_names as string[]).map((n) => n.trim())
+      if (!names.every((n) => isValidFunctionName(n))) return null
+      return { ...base, type: r.type, function_names: names }
+    }
+    case 'FunctionCalled': {
+      if (typeof r.function_name !== 'string') return null
+      const name = r.function_name.trim()
+      if (!isValidFunctionName(name)) return null
+      return { ...base, type: r.type, function_name: name }
+    }
     default:
       return { ...base, type: r.type }
   }

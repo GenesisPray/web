@@ -1,6 +1,7 @@
 import type { AlertRule, Network, WatchedContract } from '@/types'
 import { isAlertRuleType, parseAlertRule } from '@/types'
-import { isValidContractId, isValidUrl, isValidFunctionName } from '@/lib/stellar'
+import { isValidContractId, isValidUrl } from '@/lib/stellar'
+import { sanitizeAdminFunctionNames } from '@/lib/soroban'
 
 /** Export file format, aligned with WatchedContract (uses contract_id, not address). */
 export interface ContractsSnapshot {
@@ -60,28 +61,17 @@ export interface ImportParseResult {
 
 const NETWORKS: Network[] = ['mainnet', 'testnet', 'futurenet']
 
-/** Soroban symbols are limited to 32 characters. */
-const MAX_SYMBOL_LENGTH = 32
-
 /**
- * Validates and de-duplicates a list of function names.
- * Returns the cleaned list or an error message naming the offending value.
+ * Validates and de-duplicates a list of function names using the shared
+ * Soroban symbol rules (32-char limit, valid symbol characters).
+ * Returns the cleaned list or an error message naming the rejected values.
  */
 function normalizeFunctionNames(names: string[]): string[] | string {
-  const seen = new Set<string>()
-  const result: string[] = []
-  for (const name of names) {
-    if (name.length > MAX_SYMBOL_LENGTH) {
-      return `function name "${name}" exceeds ${MAX_SYMBOL_LENGTH} characters`
-    }
-    if (!isValidFunctionName(name)) {
-      return `invalid function name "${name}"`
-    }
-    if (seen.has(name)) continue
-    seen.add(name)
-    result.push(name)
+  const { valid, rejected } = sanitizeAdminFunctionNames(names)
+  if (rejected.length > 0) {
+    return `invalid function name(s): ${rejected.map((n) => `"${n}"`).join(', ')}`
   }
-  return result
+  return valid
 }
 
 export function buildSnapshot(contracts: WatchedContract[]): ContractsSnapshot {

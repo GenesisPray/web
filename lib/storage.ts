@@ -268,6 +268,14 @@ export function addContract(contract: WatchedContract) {
   saveContract(contract)
 }
 
+// Writes the given contracts verbatim, preserving server-provided timestamps.
+// Unlike saveContract, this never rewrites `updated_at`, so refreshing from the
+// server does not mark every contract as "modified just now" (#251).
+export function replaceContracts(list: WatchedContract[]): boolean {
+  const normalized = list.map((c) => ({ ...c, enabled: c.enabled ?? true }))
+  return save(CONTRACTS_KEY, normalized)
+}
+
 export function saveContract(contract: WatchedContract): boolean {
   const contracts = getContracts()
   const updated = { ...contract, enabled: contract.enabled ?? true, updated_at: Date.now() }

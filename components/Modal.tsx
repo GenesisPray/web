@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useRef, useId, ReactNode } from 'react'
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 
 interface ModalProps {
   open: boolean
@@ -22,6 +23,55 @@ const FOCUSABLE_SELECTOR = [
   '[tabindex]:not([tabindex="-1"])',
 ].join(',')
 
+interface ModalStackEntry {
+  dialog: HTMLDivElement
+  restoreFocus: HTMLElement | null
+}
+
+const modalStack: ModalStackEntry[] = []
+let originalBodyOverflow: string | null = null
+
+function registerModal(dialog: HTMLDivElement) {
+  const activeElement = document.activeElement
+  const entry: ModalStackEntry = {
+    dialog,
+    restoreFocus: activeElement instanceof HTMLElement ? activeElement : null,
+  }
+
+  if (modalStack.length === 0) {
+    originalBodyOverflow = document.body.style.overflow
+  }
+  modalStack.push(entry)
+  document.body.style.overflow = 'hidden'
+
+  function unregister() {
+    const index = modalStack.indexOf(entry)
+    if (index === -1) return
+
+    const wasTopmost = index === modalStack.length - 1
+    modalStack.splice(index, 1)
+
+    for (const nestedEntry of modalStack.slice(index)) {
+      if (entry.dialog.contains(nestedEntry.restoreFocus)) {
+        nestedEntry.restoreFocus = entry.restoreFocus
+      }
+    }
+
+    if (modalStack.length === 0 && originalBodyOverflow !== null) {
+      document.body.style.overflow = originalBodyOverflow
+      originalBodyOverflow = null
+    }
+
+    if (wasTopmost) {
+      const fallback = modalStack[modalStack.length - 1]?.dialog
+      const target = entry.restoreFocus?.isConnected ? entry.restoreFocus : fallback
+      target?.focus()
+    }
+  }
+
+  return { entry, unregister }
+}
+
 export default function Modal({
   open,
   onClose,
@@ -31,88 +81,88 @@ export default function Modal({
   labelledBy,
 }: ModalProps) {
   const dialogRef = useRef<HTMLDivElement>(null)
-  const previouslyFocused = useRef<HTMLElement | null>(null)
+  const onCloseRef = useRef(onClose)
+  onCloseRef.current = onClose
   const generatedId = useId()
   const titleId = labelledBy ?? `modal-title-${generatedId}`
+  const [portalReady, setPortalReady] = useState(false)
 
-  // Focus restore + initial focus + scroll lock
   useEffect(() => {
-    if (!open) return
+    setPortalReady(true)
+  }, [])
 
-    previouslyFocused.current = document.activeElement as HTMLElement | null
+  useEffect(() => {
+    if (!open || !portalReady) return
 
     const dialog = dialogRef.current
-    if (dialog) {
-      const focusables = Array.from(
-        dialog.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)
-      )
-      const target = destructive
-        ? focusables[focusables.length - 1]
-        : focusables[0]
-      ;(target ?? dialog).focus()
-    }
+    if (!dialog) return
 
-    const originalOverflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
+    const { entry, unregister } = registerModal(dialog)
+    const focusables = Array.from(
+      dialog.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)
+    )
+    const target = destructive
+      ? focusables[focusables.length - 1]
+      : focusables[0]
+    ;(target ?? dialog).focus()
 
-    return () => {
-      document.body.style.overflow = originalOverflow
-      previouslyFocused.current?.focus?.()
-    }
-  }, [open, destructive])
+    function handleKeyDown(event: KeyboardEvent) {
+      if (modalStack[modalStack.length - 1] !== entry) return
 
-  // Escape + focus trap
-  useEffect(() => {
-    if (!open) return
-
-    function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === 'Escape') {
-        e.preventDefault()
-        onClose()
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        onCloseRef.current()
         return
       }
-      if (e.key !== 'Tab') return
+      if (event.key !== 'Tab') return
 
-      const dialog = dialogRef.current
-      if (!dialog) return
-      const focusables = Array.from(
+      const focusableElements = Array.from(
         dialog.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)
-      ).filter((el) => el.offsetParent !== null || el === document.activeElement)
+      ).filter(
+        (element) =>
+          element.offsetParent !== null || element === document.activeElement
+      )
 
-      if (focusables.length === 0) {
-        e.preventDefault()
+      if (focusableElements.length === 0) {
+        event.preventDefault()
         dialog.focus()
         return
       }
 
-      const first = focusables[0]
-      const last = focusables[focusables.length - 1]
+      const first = focusableElements[0]
+      const last = focusableElements[focusableElements.length - 1]
       const active = document.activeElement as HTMLElement | null
 
-      if (e.shiftKey) {
+      if (event.shiftKey) {
         if (active === first || !dialog.contains(active)) {
-          e.preventDefault()
+          event.preventDefault()
           last.focus()
         }
-      } else {
-        if (active === last || !dialog.contains(active)) {
-          e.preventDefault()
-          first.focus()
-        }
+      } else if (active === last || !dialog.contains(active)) {
+        event.preventDefault()
+        first.focus()
       }
     }
 
     document.addEventListener('keydown', handleKeyDown)
-    return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [open, onClose])
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown)
+      unregister()
+    }
+  }, [open, destructive, portalReady])
 
-  if (!open) return null
+  if (!open || !portalReady || typeof document === 'undefined') return null
 
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onClose()
+      onMouseDown={(event) => {
+        if (
+          event.target === event.currentTarget &&
+          modalStack[modalStack.length - 1]?.dialog === dialogRef.current
+        ) {
+          onCloseRef.current()
+        }
       }}
     >
       <div className="absolute inset-0 bg-black/60" aria-hidden="true" />
@@ -129,6 +179,7 @@ export default function Modal({
         </h2>
         <div className="mt-4">{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }

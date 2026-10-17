@@ -1,5 +1,7 @@
 'use client';
 
+import './globals.css';
+
 export default function GlobalError({
   error,
   reset,
@@ -8,7 +10,7 @@ export default function GlobalError({
   reset: () => void;
 }) {
   return (
-    <html lang="en">
+    <html lang="en" className="dark">
       <body className="bg-background text-foreground">
         <div className="min-h-screen flex items-center justify-center px-4">
           <div className="w-full max-w-md space-y-6 text-center">

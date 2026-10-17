@@ -55,26 +55,36 @@ function setStatus(id: string, status: SyncStatus | null) {
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : 'Sync failed')
 
+export interface SyncResult {
+  ok: boolean
+  error?: string
+}
+
 /** Save locally (cache) and push to the API when configured. Never throws. */
-export async function syncSaveContract(contract: WatchedContract, isNew: boolean): Promise<void> {
+export async function syncSaveContract(contract: WatchedContract, isNew: boolean): Promise<SyncResult> {
   saveContract(contract)
-  if (!isApiConfigured()) return
+  if (!isApiConfigured()) return { ok: true }
   try {
     await (isNew ? createContract(contract) : updateContract(contract))
     setStatus(contract.id, { state: 'synced', at: Date.now() })
+    return { ok: true }
   } catch (e) {
-    setStatus(contract.id, { state: 'error', error: errMsg(e), at: Date.now() })
+    const error = errMsg(e)
+    setStatus(contract.id, { state: 'error', error, at: Date.now() })
+    return { ok: false, error }
   }
 }
 
-export async function syncDeleteContract(id: string): Promise<void> {
+export async function syncDeleteContract(id: string): Promise<SyncResult> {
   deleteContract(id)
   setStatus(id, null)
-  if (!isApiConfigured()) return
+  if (!isApiConfigured()) return { ok: true }
   try {
     await removeContract(id)
-  } catch {
+    return { ok: true }
+  } catch (e) {
     // Local delete already happened; the next refresh restores it if the API still has it.
+    return { ok: false, error: errMsg(e) }
   }
 }
 

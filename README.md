@@ -87,7 +87,7 @@ The dashboard follows a standard Next.js App Router structure:
 
 ### Storage layer
 
-- **localStorage** (`lib/storage.ts`) — persists registered contracts and user preferences
+- **localStorage** (`lib/storage.ts`) — persists registered contracts, alert history, and user preferences
 - **Freighter wallet** — stores user identity and network selection
 - **Backend API** (`lib/api.ts`) — optional txwatch-core integration for webhook delivery logs
 
@@ -303,7 +303,6 @@ See [`.github/workflows/ci.yml`](./.github/workflows/ci.yml).
 
 - [ ] Multi-signature contract support
 - [ ] Advanced filtering and search for alert history
-- [ ] Export alert logs as CSV
 
 ### Medium-term
 
@@ -324,14 +323,34 @@ See [`.github/workflows/ci.yml`](./.github/workflows/ci.yml).
 
 ## Data Persistence
 
-The current app stores all contracts and alert rules in **browser localStorage** rather than a backend database. This means:
+The current app stores all contracts, alert rules, alert history, and settings in **browser localStorage** rather than a backend database. This means:
 
-- Contracts and rules are persisted locally per browser/device
+- Contracts, rules, alert history, and settings are persisted locally per browser/device
 - Data is not synced across devices or browsers
 - Clearing browser storage will delete all saved contracts and rules
 - No server-side persistence layer is currently implemented
 
 When a backend API is integrated (via `NEXT_PUBLIC_API_URL`), the app will transition to server-side persistence.
+
+### Backup and restore
+
+Because localStorage is the only persistence layer, Settings → **Export contracts** / **Import contracts** can move your data between browsers. Both export and import let you choose what to include:
+
+- **Contracts only** — just the registered contracts and their alert rules
+- **Everything** — contracts plus alert history, retention days, notification preference, and view preferences
+
+Exports are versioned JSON. The full-backup format is:
+
+```json
+{
+  "version": 2,
+  "contracts": [],
+  "alerts": [],
+  "settings": {}
+}
+```
+
+The older contracts-only format (no `version` field, or `version: 1`) is still accepted on import, so backups made before the full-backup format existed can be restored. Importing a v2 backup restores alerts and settings as well as contracts.
 
 ## API Limitations
 
@@ -369,6 +388,12 @@ The form allows users to:
 - Select the network (Mainnet, Testnet, Futurenet)
 - Configure alert rules (large transfers, function calls, admin actions, failed transactions)
 - Test webhook delivery before going live
+
+### Settings
+The settings page lets users:
+- Export contracts only, or everything (contracts, alert history, and settings) as versioned JSON
+- Import a contracts-only (v1) or full (v2) backup, choosing whether to restore contracts only or everything
+- Configure alert retention days, notification preference, and view preferences
 
 ## Bug Reports & Feature Requests
 

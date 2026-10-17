@@ -52,6 +52,8 @@ chore: update deps
 
 All types live in `types/index.ts` and must stay in sync with the Rust structs in `stellar-txwatch-core`. Do not add fields here without a matching change in the core engine.
 
+`WatchedContract.enabled` is an optional boolean (`enabled?: boolean`). When the field is absent, the contract is treated as enabled (`absent = true`). Any change to this field must be mirrored in the `stellar-txwatch-core` type definitions.
+
 ## Pull requests
 
 - Keep PRs focused - one feature or fix per PR

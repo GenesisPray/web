@@ -4,11 +4,11 @@ Thanks for your interest in contributing! This is the web dashboard for the [Tx-
 
 ## Sister repos
 
-| Repo | Description |
-|------|-------------|
-| [stellar-txwatch-core](https://github.com/Tx-wats/stellar-txwatch-core) | Rust monitoring engine |
-| [stellar-txwatch-contracts](https://github.com/Tx-wats/stellar-txwatch-contracts) | Soroban smart contracts |
-| [web](https://github.com/Tx-wats/web) | This repo - Next.js dashboard |
+| Repo                                                                              | Description                   |
+| --------------------------------------------------------------------------------- | ----------------------------- |
+| [stellar-txwatch-core](https://github.com/Tx-wats/stellar-txwatch-core)           | Rust monitoring engine        |
+| [stellar-txwatch-contracts](https://github.com/Tx-wats/stellar-txwatch-contracts) | Soroban smart contracts       |
+| [web](https://github.com/Tx-wats/web)                                             | This repo - Next.js dashboard |
 
 ## Local setup
 
@@ -48,11 +48,18 @@ fix(page): correct Y
 chore: update deps
 ```
 
+## Git hooks
+
+After dependencies are installed, Husky runs `lint-staged` before each commit. It applies ESLint fixes and Prettier to staged JavaScript/TypeScript files, and Prettier to staged JSON, Markdown, CSS/SCSS, and YAML files. Before each push, it runs `npm run typecheck`.
+
+In an emergency, set `HUSKY=0` for the single Git command to bypass hooks, for example `HUSKY=0 git commit` or `HUSKY=0 git push`. Use this sparingly and run the skipped checks before opening or updating a pull request.
+
 ## TypeScript types
 
 All types live in `types/index.ts` and must stay in sync with the Rust structs in `stellar-txwatch-core`. Do not add fields here without a matching change in the core engine.
 
 `WatchedContract.enabled` is an optional boolean (`enabled?: boolean`). When the field is absent, the contract is treated as enabled (`absent = true`). Any change to this field must be mirrored in the `stellar-txwatch-core` type definitions.
+For browser-persisted data, also update the [Browser Storage Schema](docs/storage-schema.md). Changes to a stored shape need an owning type/read/write update, a versioned migration and test when existing data needs transformation, and an update to the schema reference. Do not store credentials such as webhook signing secrets in localStorage.
 
 ## Pull requests
 
